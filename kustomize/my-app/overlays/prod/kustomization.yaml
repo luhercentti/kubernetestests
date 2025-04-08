@@ -1,0 +1,17 @@
+resources:
+- ../../base
+
+namePrefix: prod-
+nameSuffix: -kustomize
+
+patches:
+- path: replica-patch.yaml
+  target:
+    kind: Deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+- includeSelectors: true
+  pairs:
+    app: nginx-prod-kustomize
+    env: prod

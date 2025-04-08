@@ -1,0 +1,6 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-base  # Matches base name
+spec:
+  replicas: 2

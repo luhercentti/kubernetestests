@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nginx-istio-testapp
+  namespace: default
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-istio-testapp
+  namespace: default
+  labels:
+    app: nginx-istio-testapp
+    service: nginx-istio-testapp
+spec:
+  ports:
+  - name: http
+    port: 7654
+    targetPort: 8765
+  selector:
+    app: nginx-istio-testapp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-istio-testapp
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-istio-testapp
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: nginx-istio-testapp
+        version: v1
+      annotations:
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: nginx-istio-testapp
+      containers:
+      - image: nginx:stable
+        imagePullPolicy: IfNotPresent
+        name: nginx
+        ports:
+        - containerPort: 8765
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          sed -i 's/listen\s*80/listen 8765/g' /etc/nginx/conf.d/default.conf &&
+          nginx -g 'daemon off;'
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: nginx-istio-testapp-gateway
+  namespace: default
+spec:
+  selector:
+    istio: ingressgateway    # Uses Istio's default ingress gateway
+  servers:
+  - port:
+      number: 80  # This maps to nodePort 31838 on your ingressgateway
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"     # Accepts traffic for any host
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: nginx-istio-testapp-vs
+  namespace: default
+spec:
+  hosts:
+  - "*"  # Applies to any host
+  gateways:
+  - nginx-istio-testapp-gateway   # Attached to our Gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/"   # Matches all paths
+    route:
+    - destination:
+        host: nginx-istio-testapp    # Kubernetes Service name
+        port:
+          number: 7654    # Service port
+
+
+########
+# The VirtualService defines traffic routing rules for requests entering through the Gateway.
+
+# It routes all HTTP traffic (prefix: "/") to the nginx-istio-testapp Service on port 7654.
+
+# Acts as a "virtual router" between the Gateway and your actual Service.
+# The VirtualService is Istio's routing layer that sits between the Gateway and your Service
+
+
+#explanation having this current configuration on minikube:
+# kubectl get svc -n istio-system istio-ingressgateway 
+# NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                      AGE
+# istio-ingressgateway   LoadBalancer   10.99.147.127   <pending>     15021:30267/TCP,80:31838/TCP,443:31969/TCP   7d19h
+
+# minikube service istio-ingressgateway -n istio-system --url
+
+# http://127.0.0.1:59145
+# http://127.0.0.1:59146
+# http://127.0.0.1:59147
+
+
+# the nginx url is only accesoible in this url http://127.0.0.1:59146/
+
+# 1. Istio Ingress Gateway in Minikube
+# Your istio-ingressgateway Service is of type LoadBalancer, but since Minikube doesn't have an external cloud load balancer, the EXTERNAL-IP stays <pending>. Instead, Minikube assigns random high ports (like 59146) to forward traffic to the Istio ingress gateway.
+
+# From your output:
+
+# kubectl get svc -n istio-system istio-ingressgateway
+# NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                      AGE
+# istio-ingressgateway   LoadBalancer   10.99.147.127   <pending>     15021:30267/TCP,80:31838/TCP,443:31969/TCP   7d19h
+# Port 80 (HTTP) is mapped to NodePort 31838 inside the cluster.
+
+# But when you run minikube service istio-ingressgateway -n istio-system --url, Minikube gives you temporary local ports (like 59146) to access it.
+
+# 2. How Traffic Flows in Minikube
+# External Request (You) → http://127.0.0.1:59146/  
+#     ↓ (Minikube forwards this to NodePort 31838)  
+# Istio Ingress Gateway (listening on port 80)  
+#     ↓ (VirtualService routes based on host/path)  
+# Kubernetes Service (nginx-istio-testapp:7654)  
+#     ↓ (Service forwards to targetPort)  
+# NGINX Pod (running on port 8765)
+# Why does http://127.0.0.1:59146/ work?
+# You access http://127.0.0.1:59146/ (assigned by Minikube).
+
+# Minikube forwards this to NodePort 31838 on the Istio ingress gateway.
+
+# The Gateway resource you defined tells Istio to accept HTTP traffic on port 80.
+
+# The VirtualService routes all traffic (host: *, uri: /) to your nginx-istio-testapp Service (port: 7654).
+
+# The Service forwards it to the NGINX pod (targetPort: 8765).
+
+# 3. Why Port 80 Isn’t Directly Accessible
+# In a real cloud cluster, the LoadBalancer would give you an external IP, and you’d access it on port 80.
+
+# In Minikube, since there’s no external LB, you use minikube service to get a local proxy URL (59146).
+
+# 4. How to Debug/Verify
+# Check Istio Ingress Gateway Logs
+# kubectl logs -n istio-system deploy/istio-ingressgateway
+# This will show incoming requests hitting the gateway.
+
+# Check VirtualService Routing
+# kubectl get vs nginx-istio-testapp-vs -o yaml
+# Ensure it correctly routes to nginx-istio-testapp:7654.
+
+# Test from Inside the Cluster
+# kubectl exec -it <some-pod> -- curl http://nginx-istio-testapp:7654
+# If this works, your Service is correctly routing to NGINX.
+
+# 5. Summary for Minikube
+# You access http://127.0.0.1:59146 (assigned by Minikube).
+
+# Minikube forwards this to NodePort 31838 → Istio port 80.
+
+# Istio routes it to your Service (7654) → Pod (8765).
+
+# The Gateway and VirtualService control this routing.
+
+# This setup ensures Istio manages traffic even in Minikube’s limited environment. 

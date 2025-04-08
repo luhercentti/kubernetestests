@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: nginx-base  # Changed from "nginx" to avoid conflicts
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: nginx-base  # Base selector (will be transformed)

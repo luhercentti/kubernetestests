@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      annotations:
+        checksum/config: "% sha256sum manifests/configmap.yaml %" #This makes the Deployment recreate Pods when the ConfigMap changes, is needed in this case where I have the content of the app on configmap
+      labels:
+        app: flask-app
+    spec:
+      containers:
+      - name: flask-app
+        image: python:3.9-alpine
+        command: ["sh", "-c"]
+        args:
+          - pip install flask && python /app/app.py
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: app-volume
+          mountPath: /app
+      volumes:
+      - name: app-volume
+        configMap:
+          name: flask-app-config

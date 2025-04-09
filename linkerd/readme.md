@@ -16,8 +16,6 @@ kubectl get -n emojivoto deploy -o yaml \
   | kubectl apply -f -
 
 
-
-
 linkerd viz dashboard &
 
 kubectl port-forward -n linkerd-viz svc/web 8084:8084

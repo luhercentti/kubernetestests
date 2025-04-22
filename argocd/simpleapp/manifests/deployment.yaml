@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flask-app
+  name: argocd-flask-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: flask-app
+      app: argocd-flask-app
   template:
     metadata:
       annotations:
         checksum/config: "% sha256sum manifests/configmap.yaml %" #This makes the Deployment recreate Pods when the ConfigMap changes, is needed in this case where I have the content of the app on configmap
       labels:
-        app: flask-app
+        app: argocd-flask-app
     spec:
       containers:
-      - name: flask-app
+      - name: argocd-flask-app
         image: python:3.9-alpine
         command: ["sh", "-c"]
         args:
@@ -28,4 +28,4 @@ spec:
       volumes:
       - name: app-volume
         configMap:
-          name: flask-app-config
+          name: argocd-flask-app-config
